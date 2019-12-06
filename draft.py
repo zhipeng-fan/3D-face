@@ -4,6 +4,7 @@ import trimesh
 import numpy as np
 import utils
 import torch
+from skimage import io
 
 if not os.path.isfile("./BFM/BFM_model_front.mat"):
     utils.transferBFM09()
@@ -47,10 +48,28 @@ face_model = BFM.BFM_torch(bfm_face_model)
 shape = face_model.get_shape(torch.randn(1,80), torch.zeros(1,64))[0]
 albedo = face_model.get_texture(torch.randn(1,80))[0]
 
+
 print (albedo.shape)
 print ((albedo.numpy().reshape(-1,3)))
 
 mesh = trimesh.Trimesh(vertices=shape.numpy().reshape(-1,3), 
                        faces=bfm_face_model.tri.reshape(-1,3)-1, 
                        vertex_colors=np.clip(albedo.numpy().reshape(-1,3)/255.,0,1))
-mesh.show()
+# mesh.show()
+
+import soft_renderer as sr
+
+camera_distance = 2.732
+elevation = 0
+azimuth = 180
+
+renderer = sr.SoftRenderer(image_size=512, sigma_val=1e-4, aggr_func_rgb='hard', 
+                               camera_mode='look_at', viewing_angle=30)
+
+renderer.transform.set_eyes_from_angles(camera_distance, elevation, azimuth)
+
+image = renderer(shape.reshape(-1,3).cuda(), torch.Tensor(face_model.tri.reshape(-1,3)-1).cuda(), (albedo.reshape(-1,3)/255.).cuda(), texture_type="vertex")
+
+print (image[0].permute(1,2,0).cpu().numpy().shape)
+
+io.imsave("./test.png",image[0].permute(1,2,0).cpu().numpy())
