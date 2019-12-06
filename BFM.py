@@ -40,6 +40,8 @@ class BFM_torch(nn.Module):
 		self.register_buffer("meantex", torch.tensor(model['meantex'].T, dtype=torch.float32))
 		# [107121, 80]
 		self.register_buffer('texBase', torch.tensor(model['texBase'], dtype=torch.float32))
+		# [70789, 3]
+		self.register_buffer('tri', torch.tensor(model['tri'], dtype=torch.float32))
 		
 
 	def get_shape(self, id_param, ex_param):
@@ -67,3 +69,34 @@ class BFM_torch(nn.Module):
 		tex_base = self.texBase[None,:,:].expand(bs,-1,-1)
 		
 		return self.meantex+torch.bmm(tex_base,tex_param[:,:,None])
+
+	def compute_rotation_matrix(self, rotate_param):
+		"""
+		Perform rotation based on the batch rotation parameter
+		rotate_param: [bs, 3]
+		return: [bs, 3, 3]
+		"""
+		pitch, yaw, roll = rotate_param[:,0], rotate_param[:,1], rotate_param[:,2]
+		bs = rotate_param.shape[0]
+		device = rotate_param.device
+
+		pitch_matrix = torch.eye((bs, 3, 3), device=device)
+		yaw_matrix = torch.eye((bs, 3, 3), device=device)
+		roll_matrix  = torch.eye((bs, 3, 3), device=device)
+
+		pitch_matrix[:,1,1] = torch.cos(pitch)
+		pitch_matrix[:,2,2] = torch.cos(pitch)
+		pitch_matrix[:,1,2] = -torch.sin(pitch)
+		pitch_matrix[:,2,1] = torch.sin(pitch)
+
+		yaw_matrix[:,0,0] = torch.cos(yaw)
+		yaw_matrix[:,2,2] = torch.cos(yaw)
+		yaw_matrix[:,0,2] = torch.sin(yaw)
+		yaw_matrix[:,2,0] = -torch.sin(yaw)
+
+		roll_matrix[:,0,0] = torch.cos(roll)
+		roll_matrix[:,1,1] = torch.cos(roll)
+		roll_matrix[:,0,1] = -torch.sin(roll)
+		roll_matrix[:,1,0] = torch.sin(roll)
+
+		return torch.bmm(roll_matrix, torch.bmm(yaw_matrix, pitch_matrix))
