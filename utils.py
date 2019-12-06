@@ -1,3 +1,7 @@
+import numpy as np
+from scipy.io import loadmat, savemat
+from array import array
+
 # ############################## BFM MODEL PREPROCESSING ##########################
 # load expression basis
 def LoadExpBasis():
