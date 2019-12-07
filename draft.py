@@ -46,33 +46,43 @@ bfm_face_model = BFM.BFM()
 
 print (bfm_face_model.tri.shape)
 
+bs = 10
 
-face_model = BFM.BFM_torch(bfm_face_model)
-shape = face_model.get_shape(torch.randn(1,80), torch.zeros(1,64))[0]
-albedo = face_model.get_texture(torch.randn(1,80))[0]
+face_model = BFM.BFM_torch()
+shape = face_model.get_shape(torch.randn(bs,80), torch.zeros(bs,64))
+albedo = face_model.get_texture(torch.randn(bs,80))
 
+shape = shape.reshape(bs,-1,3)
+albedo = albedo.reshape(bs,-1,3)/255.
 
-print (albedo.shape)
-print ((albedo.numpy().reshape(-1,3)))
+rot_param = torch.randn(bs,3)
+rot_mat = face_model.compute_rotation_matrix(rot_param)
+print (shape.shape)
+shape = torch.bmm(shape, rot_mat)
 
-mesh = trimesh.Trimesh(vertices=shape.numpy().reshape(-1,3), 
-                       faces=bfm_face_model.tri.reshape(-1,3)-1, 
-                       vertex_colors=np.clip(albedo.numpy().reshape(-1,3)/255.,0,1))
+mesh = trimesh.Trimesh(vertices=shape[0].numpy(), 
+                       faces=face_model.tri.reshape(-1,3)-1, 
+                       vertex_colors=np.clip(albedo[0].numpy(),0,1))
 mesh.show()
 
-import soft_renderer as sr
+mesh = trimesh.Trimesh(vertices=shape[1].numpy(), 
+                       faces=face_model.tri.reshape(-1,3)-1, 
+                       vertex_colors=np.clip(albedo[1].numpy(),0,1))
+mesh.show()
 
-camera_distance = 2.732
-elevation = 0
-azimuth = 180
+# import soft_renderer as sr
 
-renderer = sr.SoftRenderer(image_size=512, sigma_val=1e-4, aggr_func_rgb='hard', 
-                               camera_mode='look_at', viewing_angle=30)
+# camera_distance = 2.732
+# elevation = 0
+# azimuth = 180
 
-renderer.transform.set_eyes_from_angles(camera_distance, elevation, azimuth)
+# renderer = sr.SoftRenderer(image_size=512, sigma_val=1e-4, aggr_func_rgb='hard', 
+#                                camera_mode='look_at', viewing_angle=30)
 
-image = renderer(shape.reshape(-1,3).cuda(), (face_model.tri.reshape(-1,3)-1).cuda(), (albedo.reshape(-1,3)/255.).cuda(), texture_type="vertex")
+# renderer.transform.set_eyes_from_angles(camera_distance, elevation, azimuth)
 
-print (image[0].permute(1,2,0).cpu().numpy().shape)
+# image = renderer(shape.reshape(-1,3).cuda(), (face_model.tri.reshape(-1,3)-1).cuda(), (albedo.reshape(-1,3)/255.).cuda(), texture_type="vertex")
 
-io.imsave("./test.png",image[0].permute(1,2,0).cpu().numpy())
+# print (image[0].permute(1,2,0).cpu().numpy().shape)
+
+# io.imsave("./test.png",image[0].permute(1,2,0).cpu().numpy())

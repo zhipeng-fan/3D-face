@@ -26,7 +26,7 @@ class BFM_torch(nn.Module):
 	This is a torch implementation of the BFM model
 	Used in the DNN model, comes with gradient support
 	"""
-	def __init__(self, BFM_MODEL):
+	def __init__(self):
 		super(BFM_torch, self).__init__()
 		model_path = './BFM/BFM_model_front.mat'
 		model = loadmat(model_path)
@@ -80,9 +80,9 @@ class BFM_torch(nn.Module):
 		bs = rotate_param.shape[0]
 		device = rotate_param.device
 
-		pitch_matrix = torch.eye((bs, 3, 3), device=device)
-		yaw_matrix = torch.eye((bs, 3, 3), device=device)
-		roll_matrix  = torch.eye((bs, 3, 3), device=device)
+		pitch_matrix = torch.eye(3, device=device)[None,:,:].expand(bs,-1,-1).clone()
+		yaw_matrix = torch.eye(3, device=device)[None,:,:].expand(bs,-1,-1).clone()
+		roll_matrix  = torch.eye(3, device=device)[None,:,:].expand(bs,-1,-1).clone()
 
 		pitch_matrix[:,1,1] = torch.cos(pitch)
 		pitch_matrix[:,2,2] = torch.cos(pitch)
