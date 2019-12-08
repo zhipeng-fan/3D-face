@@ -38,10 +38,11 @@ def prepare_dataset(name, size, _image_list):
             else:
                 landmark_dset[idx] = lmk[0][:,:2]
 
-print ("Prepare validation set:")
-prepare_dataset("val", num_val_image, image_list[:num_val_image])
-print ("Prepare test set:")
-prepare_dataset("test", num_test_image, image_list[num_val_image:num_val_image+num_test_image])
-print ("Prepare train set:")
-prepare_dataset("train", num_train_image, image_list[-num_train_image:])
+# print ("Prepare validation set:")
+# prepare_dataset("val", num_val_image, image_list[:num_val_image])
+# print ("Prepare test set:")
+# prepare_dataset("test", num_test_image, image_list[num_val_image:num_val_image+num_test_image])
+# print ("Prepare train set:")
+# prepare_dataset("train", num_train_image, image_list[-num_train_image:])
 
+print ("Dataset prearation stopped for protecting the current data folder!")

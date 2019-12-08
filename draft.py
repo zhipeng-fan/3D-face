@@ -9,7 +9,7 @@ from skimage import io
 if not os.path.isfile("./BFM/BFM_model_front.mat"):
     utils.transferBFM09()
 
-bfm_face_model = BFM.BFM()
+# bfm_face_model = BFM.BFM()
 
 # mesh = trimesh.Trimesh(vertices=bfm_face_model.meanshape.reshape(-1,3), 
 #                        faces=bfm_face_model.tri.reshape(-1,3)-1, 
@@ -44,7 +44,18 @@ bfm_face_model = BFM.BFM()
 # print (bfm_face_model.meantex.shape)
 # print (bfm_face_model.idBase.shape)
 
-print (bfm_face_model.tri.shape)
+# print (bfm_face_model.tri.shape)
+
+import soft_renderer as sr
+
+camera_distance = 2.732
+elevation = 0
+azimuth = 180
+
+renderer = sr.SoftRenderer(image_size=512, sigma_val=1e-4, aggr_func_rgb='hard', 
+                               camera_mode='look_at', viewing_angle=30)
+
+renderer.transform.set_eyes_from_angles(camera_distance, elevation, azimuth)
 
 bs = 10
 
@@ -58,28 +69,26 @@ albedo = albedo.reshape(bs,-1,3)/255.
 rot_param = torch.randn(bs,3)
 rot_mat = face_model.compute_rotation_matrix(rot_param)
 print (shape.shape)
-shape = torch.bmm(shape, rot_mat)
+# shape = torch.bmm(shape, rot_mat)
 
-mesh = trimesh.Trimesh(vertices=shape[0].numpy(), 
-                       faces=face_model.tri.reshape(-1,3)-1, 
-                       vertex_colors=np.clip(albedo[0].numpy(),0,1))
-mesh.show()
+# mesh = trimesh.Trimesh(vertices=shape[0].numpy(), 
+                    #    faces=face_model.tri.reshape(-1,3)-1, 
+                    #    vertex_colors=np.clip(albedo[0].numpy(),0,1))
+# mesh.show()
 
-mesh = trimesh.Trimesh(vertices=shape[1].numpy(), 
-                       faces=face_model.tri.reshape(-1,3)-1, 
-                       vertex_colors=np.clip(albedo[1].numpy(),0,1))
-mesh.show()
+image = renderer(shape[0].cuda(), (face_model.tri.reshape(-1,3)-1).cuda(), (albedo[0]).cuda(), texture_type="vertex")
+io.imsave("./test_ori.png",image[0].permute(1,2,0).cpu().numpy())
 
-# import soft_renderer as sr
 
-# camera_distance = 2.732
-# elevation = 0
-# azimuth = 180
+shape += torch.Tensor([0.5,0,0])
 
-# renderer = sr.SoftRenderer(image_size=512, sigma_val=1e-4, aggr_func_rgb='hard', 
-#                                camera_mode='look_at', viewing_angle=30)
+# mesh = trimesh.Trimesh(vertices=shape[0].numpy(), 
+                    #    faces=face_model.tri.reshape(-1,3)-1, 
+                    #    vertex_colors=np.clip(albedo[0].numpy(),0,1))
+# mesh.show()
 
-# renderer.transform.set_eyes_from_angles(camera_distance, elevation, azimuth)
+image = renderer(shape[0].cuda(), (face_model.tri.reshape(-1,3)-1).cuda(), (albedo[0]).cuda(), texture_type="vertex")
+io.imsave("./test_shift.png",image[0].permute(1,2,0).cpu().numpy())
 
 # image = renderer(shape.reshape(-1,3).cuda(), (face_model.tri.reshape(-1,3)-1).cuda(), (albedo.reshape(-1,3)/255.).cuda(), texture_type="vertex")
 
