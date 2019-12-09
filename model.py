@@ -129,3 +129,14 @@ class BaseDecoder(nn.Module):
         face_albedo = self.lighting(normal, face_albedo, gamma)
 
         return face_shape, face_albedo
+
+class BFMReconstruction(nn.Module):
+    def __init__(self):
+        super(BFMReconstruction, self).__init__()
+        self.encoder = BaseModel(False)
+        self.decoder = BaseDecoder()
+
+    def forward(self, x):
+        params = self.encoder(x)
+        face_shape, face_albedo = self.decoder(params)
+        return face_shape, face_albedo
