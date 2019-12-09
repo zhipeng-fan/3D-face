@@ -41,8 +41,11 @@ class BFM_torch(nn.Module):
 		# [107121, 80]
 		self.register_buffer('texBase', torch.tensor(model['texBase'], dtype=torch.float32))
 		# [70789, 3]
-		self.register_buffer('tri', torch.tensor(model['tri'], dtype=torch.float32))
-		
+		self.register_buffer('tri', torch.tensor(model['tri'], dtype=torch.int32))
+		# [35709, 8] Max is 70789;
+		self.register_buffer('point_buf', torch.tensor(model['point_buf'], dtype=torch.int32))
+		# [68]
+		self.register_buffer('keypoints', torch.tensor(np.squeeze(model['keypoints']).astype(np.int32) - 1, dtype=torch.int32))
 
 	def get_shape(self, id_param, ex_param):
 		"""
