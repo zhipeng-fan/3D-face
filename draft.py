@@ -65,10 +65,10 @@ albedo = face_model.get_texture(torch.randn(bs,80))
 shape = shape.reshape(bs,-1,3)
 albedo = albedo.reshape(bs,-1,3)/255.
 
-face_id = face_model.tri-1
-face_id = face_id[None,:,:].expand(bs,-1,-1)
+# face_id = face_model.tri-1
+# face_id = face_id[None,:,:].expand(bs,-1,-1)
 
-print (shape[:, face_id.long(), :].shape)
+# print (shape[:, face_id.long(), :].shape)
 
 # v1 = torch.gather(shape, dim=1, index=face_id[:,:,:1].expand(-1,-1,3).long())
 
@@ -90,7 +90,9 @@ print (shape[:, face_id.long(), :].shape)
 #                        vertex_colors=np.clip(albedo[0].numpy(),0,1))
 # mesh.show()
 
-# mesh, image = renderer(shape[0].cuda(), (face_model.tri.reshape(-1,3)-1).cuda(), (albedo[0]).cuda(), texture_type="vertex")
+mesh, image = renderer(shape.cuda(), (face_model.tri.reshape(-1,3)-1)[None,:,:].expand(bs,-1,-1).cuda(), albedo.cuda(), texture_type="vertex")
+import pdb; pdb.set_trace()
+
 # lmk = mesh.vertices[:, face_model.keypoints, :].cpu().numpy()
 # print (lmk.shape)
 # lmk[:,:,:2] = (lmk[:,:,:2]+1)*512/2
