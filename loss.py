@@ -110,6 +110,7 @@ class BFMFaceLoss(nn.Module):
         face_albedo = self.BFM_model.get_texture(tex_coef)
 
         face_shape = face_shape.reshape(bs, -1, 3)
+        face_shape[:,:,-1] *= -1
         # Recenter the face mesh
         face_shape = face_shape - torch.mean(face_shape, dim=1, keepdim=True)        
         face_albedo = face_albedo.reshape(bs, -1, 3)/255.
@@ -136,9 +137,7 @@ class BFMFaceLoss(nn.Module):
         # Compute loss
         # remove the alpha channel
         img_loss = self.mse_criterion(recon_img[:,:3,:,:], gt_img)
-        gt_lmk[:,:,1] = 250.-gt_lmk[:,:,1]
-        gt_lmk = (gt_lmk-125.)/125.
-        print (gt_lmk)
-        lmk_loss = self.sl1_criterion(recon_lmk[:,:,:2], gt_lmk)
+        gt_lmk[:,:,1] = 250.-gt_lmk[:,:,1].float()
+        lmk_loss = self.sl1_criterion(recon_lmk[:,:,:2], (gt_lmk.float()-125.)/125.)
         all_loss = img_loss + self.lmk_loss_w*lmk_loss
         return all_loss, img_loss, lmk_loss, recon_img

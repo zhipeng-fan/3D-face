@@ -14,7 +14,7 @@ from model import BaseModel
 from loss import BFMFaceLoss
 
 # -------------------------- Hyperparameter ------------------------------
-BATCH_SIZE=16
+BATCH_SIZE=64
 NUM_EPOCH=20
 LR=1e-4
 VERBOSE_STEP=50
@@ -47,7 +47,7 @@ inv_normalize = transforms.Compose([
                     
 
 # -------------------------- Dataset loading -----------------------------
-train_set = CACDDataset("./data/CACD2000_train.hdf5", train_transform)
+train_set = CACDDataset("./data/CACD2000_val.hdf5", train_transform)
 val_set = CACDDataset("./data/CACD2000_val.hdf5", val_transform)
 
 train_dataloader = DataLoader(train_set, batch_size=BATCH_SIZE, num_workers=4, shuffle=True)
@@ -59,6 +59,7 @@ model.to(device)
 
 # -------------------------- Optimizer loading --------------------------
 optimizer = optim.Adam(model.parameters(), lr=LR)
+lr_schduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.2, patience=5)
 
 # ------------------------- Loss loading --------------------------------
 camera_distance = 2.732
@@ -125,6 +126,7 @@ def train(model, epoch):
 # ------------------------- eval ---------------------------------------
 def eval(model, epoch):
     model.eval()
+    all_loss_list = []
     img_loss_list = []
     lmk_loss_list = []
     with torch.no_grad():
@@ -132,23 +134,26 @@ def eval(model, epoch):
             img, lmk = data
             img = img.to(device); lmk = lmk.to(device)
             recon_params = model(img)
-            _,img_loss,lmk_loss,recon_img=face_loss(recon_params, img, lmk)
+            all_loss,img_loss,lmk_loss,recon_img=face_loss(recon_params, img, lmk)
+            all_loss_list.append(all_loss.item())
             img_loss_list.append(img_loss.item())
             lmk_loss_list.append(lmk_loss.item())
             if i == VIS_BATCH_IDX:
                 visualize_image = visualize_batch(img, recon_img)
 
     print ("-"*50, " Test Results ", "-"*50)
+    all_loss = np.mean(all_loss_list)
     img_loss = np.mean(img_loss_list)
     lmk_loss = np.mean(lmk_loss_list)
     print ("Epoch {:02}/{:02} image loss: {:.6f} landmark loss {:.6f}".format(epoch+1, NUM_EPOCH, img_loss, lmk_loss))
     print ("-"*116)
-    return img_loss, lmk_loss, visualize_image
+    return all_loss, img_loss, lmk_loss, visualize_image
 
 for epoch in range(NUM_EPOCH):
     model = train(model, epoch)
-    img_loss, lmk_loss, visualize_image = eval(model, epoch)
-    io.imsave("./result/Epoch:{:02}_ImgLoss:{:.6f}_LMKLoss:{:.6f}.png".format(epoch, img_loss, lmk_loss), visualize_image)
+    all_loss, img_loss, lmk_loss, visualize_image = eval(model, epoch)
+    lr_schduler.step(all_loss)
+    io.imsave("./result/Epoch:{:02}_AllLoss:{:.6f}_ImgLoss:{:.6f}_LMKLoss:{:.6f}.png".format(epoch, all_loss, img_loss, lmk_loss), visualize_image)
     model2save = {'model': model.state_dict(),
                   'optimizer': optimizer.state_dict()}
     torch.save(model2save, "./model_result/epoch_{:02}_loss_{:.4f}_lmk_loss_{:.4f}_img_loss{:.4f}.pth".format(epoch+1, img_loss+LMK_LOSS_WEIGHT*lmk_loss, img_loss, lmk_loss, ))
