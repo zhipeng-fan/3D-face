@@ -25,6 +25,8 @@ class BFMFaceLoss(nn.Module):
         self.c1 = torch.tensor(math.sqrt(3.0)/math.sqrt(4*math.pi)).to(self.device)
         self.c2 = torch.tensor(3*math.sqrt(5.0)/math.sqrt(12*math.pi)).to(self.device)
 
+        self.reverse_z = torch.eye(3).to(self.device)[None,:,:]
+
     def split(self, params):
         id_coef = params[:,:80]
         ex_coef = params[:,80:144]
@@ -42,7 +44,7 @@ class BFMFaceLoss(nn.Module):
             vertices[bs, 35709, 3]
         """
         bs = vertices.shape[0]
-        face_id = self.BFM_model.tri-1
+        face_id = torch.flip(self.BFM_model.tri.reshape(-1,3)-1, dims=[1])
         point_id = self.BFM_model.point_buf-1
         # [bs, 70789, 3]
         face_id = face_id[None,:,:].expand(bs,-1,-1)
@@ -85,7 +87,7 @@ class BFMFaceLoss(nn.Module):
         init_light[0] = 0.8
         gamma = gamma.reshape(bs,3,9)+init_light
 
-        Y0 = self.a0*torch.ones(bs, num_vertex, 1, device=self.device)
+        Y0 = self.a0*self.c0*torch.ones(bs, num_vertex, 1, device=self.device)
         Y1 = -self.a1*self.c1*norm[:,:,1:2]
         Y2 = self.a1*self.c1*norm[:,:,2:3]
         Y3 = -self.a1*self.c1*norm[:,:,0:1]
@@ -106,13 +108,11 @@ class BFMFaceLoss(nn.Module):
     def forward(self, params, gt_img, gt_lmk):
         bs = params.shape[0]
         id_coef, ex_coef, tex_coef, angles, gamma, tranlation, scale = self.split(params)
-        face_shape = self.BFM_model.get_shape(id_coef, ex_coef)
-        face_albedo = self.BFM_model.get_texture(tex_coef)
 
-        face_shape = face_shape.reshape(bs, -1, 3)
+        face_shape = self.BFM_model.get_shape(id_coef, ex_coef)
+        face_albedo = self.BFM_model.get_texture(tex_coef) 
         face_shape[:,:,-1] *= -1
         # Recenter the face mesh
-        face_shape = face_shape - torch.mean(face_shape, dim=1, keepdim=True)        
         face_albedo = face_albedo.reshape(bs, -1, 3)/255.
 
         # face model scaling, rotation and translation
@@ -120,12 +120,13 @@ class BFMFaceLoss(nn.Module):
         face_shape = torch.bmm(face_shape, rotation_matrix)
         # Compute the normal
         normal = self.compute_norm(face_shape)
-        face_shape = scale[:,:,None]*face_shape
+        
+        face_shape = (1+scale[:,:,None])*face_shape
         face_shape = face_shape+tranlation[:,None,:]
 
         face_albedo = self.lighting(normal, face_albedo, gamma)
 
-        tri = self.BFM_model.tri.reshape(-1,3)-1
+        tri = torch.flip(self.BFM_model.tri.reshape(-1,3)-1, dims=[-1])
         face_triangles = tri[None,:,:].expand(bs,-1,-1)
 
         recon_mesh, recon_img = self.renderer(face_shape,
@@ -136,8 +137,13 @@ class BFMFaceLoss(nn.Module):
 
         # Compute loss
         # remove the alpha channel
-        img_loss = self.mse_criterion(recon_img[:,:3,:,:], gt_img)
-        gt_lmk[:,:,1] = 250.-gt_lmk[:,:,1].float()
-        lmk_loss = self.sl1_criterion(recon_lmk[:,:,:2], (gt_lmk.float()-125.)/125.)
+        mask = (recon_img[:,-1:,:,:].detach() > 0).float()
+        img_loss = self.mse_criterion(recon_img[:,:3,:,:], gt_img*mask)
+        # gt_lmk[:,:,1] = 250.-gt_lmk[:,:,1].float()
+        # (gt_lmk.float()-125.)/125.
+        recon_lmk_2D_rev = (recon_lmk[:,:,:2]+1)*250./2.
+        recon_lmk_2D = (recon_lmk[:,:,:2]+1)*250./2.
+        recon_lmk_2D[:,:,1] = 250.-recon_lmk_2D_rev[:,:,1] 
+        lmk_loss = self.sl1_criterion(recon_lmk_2D, gt_lmk.float())
         all_loss = img_loss + self.lmk_loss_w*lmk_loss
         return all_loss, img_loss, lmk_loss, recon_img

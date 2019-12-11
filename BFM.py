@@ -59,8 +59,11 @@ class BFM_torch(nn.Module):
 
 		id_base = self.idBase[None,:,:].expand(bs,-1,-1)
 		ex_base = self.exBase[None,:,:].expand(bs,-1,-1)
-
-		return self.meanshape+torch.bmm(id_base,id_param[:,:,None])+torch.bmm(ex_base,ex_param[:,:,None])
+		
+		face_shape = self.meanshape+torch.bmm(id_base,id_param[:,:,None])+torch.bmm(ex_base,ex_param[:,:,None])
+		face_shape = face_shape.reshape(bs,-1, 3)
+		face_shape = face_shape - torch.mean(self.meanshape[None,:,:].reshape(1,-1,3), dim=1, keepdim=True)        
+		return face_shape
 
 	def get_texture(self, tex_param):
 		"""
@@ -102,4 +105,4 @@ class BFM_torch(nn.Module):
 		roll_matrix[:,0,1] = -torch.sin(roll)
 		roll_matrix[:,1,0] = torch.sin(roll)
 
-		return torch.bmm(roll_matrix, torch.bmm(yaw_matrix, pitch_matrix))
+		return torch.bmm(torch.bmm(roll_matrix, yaw_matrix), pitch_matrix).permute(0,2,1)
