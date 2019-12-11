@@ -1,3 +1,6 @@
+import os
+os.environ["CUDA_VISIBLE_DEVICES"] ="1"
+
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
@@ -17,7 +20,7 @@ from loss import BFMFaceLoss
 BATCH_SIZE=64
 NUM_EPOCH=100
 VERBOSE_STEP=50
-LR=1e-4
+LR=3e-5
 VIS_BATCH_IDX=5
 LMK_LOSS_WEIGHT=20
 SEED=7
@@ -53,14 +56,14 @@ inv_normalize = transforms.Compose([
                     
 
 # -------------------------- Dataset loading -----------------------------
-train_set = CACDDataset("./data/CACD2000_val.hdf5", train_transform, inv_normalize)
+train_set = CACDDataset("./data/CACD2000_train.hdf5", train_transform, inv_normalize)
 val_set = CACDDataset("./data/CACD2000_val.hdf5", val_transform, inv_normalize)
 
 train_dataloader = DataLoader(train_set, batch_size=BATCH_SIZE, num_workers=4, shuffle=True)
 val_dataloader = DataLoader(val_set, batch_size=BATCH_SIZE, num_workers=4, shuffle=False)
 
 # -------------------------- Model loading ------------------------------
-model = BaseModel()
+model = BaseModel(IF_PRETRAINED=True)
 model.to(device)
 
 # -------------------------- Optimizer loading --------------------------
@@ -164,8 +167,8 @@ for epoch in range(NUM_EPOCH):
     model = train(model, epoch)
     all_loss, img_loss, lmk_loss, visualize_image = eval(model, epoch)
     lr_schduler.step(all_loss)
-    io.imsave("./result/Epoch:{:02}_AllLoss:{:.6f}_ImgLoss:{:.6f}_LMKLoss:{:.6f}.png".format(epoch, all_loss, img_loss, lmk_loss), visualize_image)
+    io.imsave("./result_full/Epoch:{:02}_AllLoss:{:.6f}_ImgLoss:{:.6f}_LMKLoss:{:.6f}.png".format(epoch, all_loss, img_loss, lmk_loss), visualize_image)
     model2save = {'model': model.state_dict(),
                   'optimizer': optimizer.state_dict()}
-    torch.save(model2save, "./model_result/epoch_{:02}_loss_{:.4f}_lmk_loss_{:.4f}_img_loss{:.4f}.pth".format(epoch+1, img_loss+LMK_LOSS_WEIGHT*lmk_loss, img_loss, lmk_loss, ))
+    torch.save(model2save, "./model_result_full/epoch_{:02}_loss_{:.4f}_lmk_loss_{:.4f}_img_loss{:.4f}.pth".format(epoch+1, img_loss+LMK_LOSS_WEIGHT*lmk_loss, img_loss, lmk_loss, ))
 

@@ -15,7 +15,7 @@ class CACDDataset(Dataset):
         self.inv_normalize = inv_normalize
 
     def __len__(self):
-        return 500
+        return self.length
 
     def __getitem__(self, idx):
         with h5py.File(self.dataset_path, "r") as file:
