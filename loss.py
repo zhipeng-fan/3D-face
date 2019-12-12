@@ -5,10 +5,11 @@ import torch.nn.functional as f
 import math
 
 from BFM import BFM_torch
+from facenet_pytorch import InceptionResnetV1
 
 class BFMFaceLoss(nn.Module):
     """Decode from the learned parameters to the 3D face model"""
-    def __init__(self, renderer, lmk_loss_w, device):
+    def __init__(self, renderer, lmk_loss_w, reg_loss_w, device):
         super(BFMFaceLoss, self).__init__()
         self.BFM_model = BFM_torch().to(device)
         self.renderer = renderer
@@ -26,6 +27,10 @@ class BFMFaceLoss(nn.Module):
         self.c2 = torch.tensor(3*math.sqrt(5.0)/math.sqrt(12*math.pi)).to(self.device)
 
         self.reverse_z = torch.eye(3).to(self.device)[None,:,:]
+        self.face_net = InceptionResnetV1(pretrained='vggface2').eval()
+        for param in self.face_net.parameters():
+            param.requires_grad=False
+        self.face_net.to(device)
 
     def split(self, params):
         id_coef = params[:,:80]
@@ -138,12 +143,16 @@ class BFMFaceLoss(nn.Module):
         # Compute loss
         # remove the alpha channel
         mask = (recon_img[:,-1:,:,:].detach() > 0).float()
+        # Image loss
         img_loss = self.mse_criterion(recon_img[:,:3,:,:], gt_img*mask)
-        # gt_lmk[:,:,1] = 250.-gt_lmk[:,:,1].float()
-        # (gt_lmk.float()-125.)/125.
+        # Landmark loss
         recon_lmk_2D_rev = (recon_lmk[:,:,:2]+1)*250./2.
         recon_lmk_2D = (recon_lmk[:,:,:2]+1)*250./2.
         recon_lmk_2D[:,:,1] = 250.-recon_lmk_2D_rev[:,:,1] 
         lmk_loss = self.sl1_criterion(recon_lmk_2D, gt_lmk.float())
-        all_loss = img_loss + self.lmk_loss_w*lmk_loss
-        return all_loss, img_loss, lmk_loss, recon_img
+        # face recog loss
+        recon_feature = self.face_net(recon_img[:,:3,:,:])
+        gt_feature = self.face_net(gt_img*mask)
+        recog_loss = self.mse_criterion(recon_feature, gt_feature)
+        all_loss = img_loss + self.lmk_loss_w*lmk_loss + recog_loss
+        return all_loss, img_loss, lmk_loss, recog_loss, recon_img
