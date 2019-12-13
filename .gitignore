@@ -3,3 +3,5 @@
 *.hdf5
 *.p
 __pycache__/*
+*.png
+*.mat
