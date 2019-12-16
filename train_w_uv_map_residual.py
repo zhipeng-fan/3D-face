@@ -14,17 +14,22 @@ import soft_renderer as sr
 
 from dataset import CACDDataset
 from model import BaseModel
-from loss import BFMFaceLoss
+from u_net import DoubleHeadUNet
+from loss import BFMFaceLossUVMap
 
 # -------------------------- Hyperparameter ------------------------------
 BATCH_SIZE=32
 NUM_EPOCH=50
 VERBOSE_STEP=50
-LR=3e-5
+LR=3e-4
 VIS_BATCH_IDX=7
 LMK_LOSS_WEIGHT=1
-RECOG_LOSS_WEIGHT=20
-MODEL_LOAD_PATH="./model_result_full/epoch_04_loss_15.5574_lmk_loss_0.0120_img_loss0.7773.pth"
+RECOG_LOSS_WEIGHT=40
+SMALL_OFFSET_W=1e-4
+SYM_OFFSET_W=1e-4
+MODEL_LOAD_PATH="./model_result_full/epoch_19_loss_0.5796_Img_loss_0.0098_LMK_loss0.5698_Recog_loss0.0023.pth"
+# UV_MODEL_LOAD_PATH = "./model_result_uv/epoch_02_loss_0.5661_Img_loss_0.0100_LMK_loss0.5561_Recog_loss0.0023.pth"
+UV_MODEL_LOAD_PATH = None
 SEED=0
 
 # -------------------------- Reproducibility ------------------------------
@@ -65,16 +70,25 @@ train_dataloader = DataLoader(train_set, batch_size=BATCH_SIZE, num_workers=4, s
 val_dataloader = DataLoader(val_set, batch_size=BATCH_SIZE, num_workers=4, shuffle=False)
 
 # -------------------------- Model loading ------------------------------
-model = BaseModel(IF_PRETRAINED=True)
-model.to(device)
+# Load base model first
+base_model = BaseModel(IF_PRETRAINED=True)
+base_model.to(device)
 if MODEL_LOAD_PATH is not None:
-    model.load_state_dict(torch.load(MODEL_LOAD_PATH)['model'])
+    base_model.load_state_dict(torch.load(MODEL_LOAD_PATH)['model'])
 
+for param in base_model.parameters():
+    param.requires_grad=False
+base_model.eval()
+
+uv_model = DoubleHeadUNet(7,3,32)
+uv_model.to(device)
+if UV_MODEL_LOAD_PATH is not None:
+    uv_model.load_state_dict(torch.load(UV_MODEL_LOAD_PATH)['model'])
 # -------------------------- Optimizer loading --------------------------
-optimizer = optim.Adam(model.parameters(), lr=LR)
-lr_schduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.2, patience=5)
-if MODEL_LOAD_PATH is not None:
-    optimizer.load_state_dict(torch.load(MODEL_LOAD_PATH)['optimizer'])
+optimizer = optim.Adam(uv_model.parameters(), lr=LR)
+lr_schduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.2, patience=3)
+# if MODEL_LOAD_PATH is not None:
+#     optimizer.load_state_dict(torch.load(MODEL_LOAD_PATH)['optimizer'])
 
 # ------------------------- Loss loading --------------------------------
 camera_distance = 2.732
@@ -86,7 +100,8 @@ renderer = sr.SoftRenderer(image_size=224, sigma_val=1e-4, aggr_func_rgb='hard',
                             perspective=True, light_intensity_ambient=1.0, light_intensity_directionals=0)
 
 renderer.transform.set_eyes_from_angles(camera_distance, elevation, azimuth)
-face_loss = BFMFaceLoss(renderer, LMK_LOSS_WEIGHT, RECOG_LOSS_WEIGHT, device)
+# face_loss = BFMFaceLoss(renderer, LMK_LOSS_WEIGHT, RECOG_LOSS_WEIGHT, device)
+face_loss = BFMFaceLossUVMap(SMALL_OFFSET_W, SYM_OFFSET_W, 224, renderer, LMK_LOSS_WEIGHT, RECOG_LOSS_WEIGHT, device).to(device)
 
 # ------------------------- plot visualization --------------------------
 def visualize_batch(gt_imgs, recon_imgs):
@@ -109,8 +124,8 @@ def visualize_batch(gt_imgs, recon_imgs):
 
 
 # ------------------------- train ---------------------------------------
-def train(model, epoch):
-    model.train()
+def train(base_model, uv_model, epoch):
+    uv_model.train()
     running_loss = []
     running_img_loss = []
     running_lmk_loss = []
@@ -121,8 +136,10 @@ def train(model, epoch):
         in_img = in_img.to(device); lmk = lmk.to(device)
         gt_img = gt_img.to(device)
         optimizer.zero_grad()
-        recon_params = model(in_img)
-        loss,img_loss,lmk_loss,recog_loss,_ = face_loss(recon_params, gt_img, lmk)
+        recon_params = base_model(in_img)
+        recon_img = face_loss.reconst_img(recon_params)
+        shape_map, color_map = uv_model(torch.cat([in_img, recon_img], dim=1))
+        loss,img_loss,lmk_loss,recog_loss,_ = face_loss(recon_params, shape_map, color_map, gt_img, lmk)
         loss.backward()
         optimizer.step()
         running_loss.append(loss.item())
@@ -145,11 +162,11 @@ def train(model, epoch):
             running_lmk_loss = []
             running_recog_loss = []
 
-    return model
+    return uv_model
 
 # ------------------------- eval ---------------------------------------
-def eval(model, epoch):
-    model.eval()
+def eval(base_model, uv_model, epoch):
+    uv_model.eval()
     all_loss_list = []
     img_loss_list = []
     lmk_loss_list = []
@@ -160,15 +177,21 @@ def eval(model, epoch):
             in_img = in_img.to(device); lmk = lmk.to(device)
             gt_img = gt_img.to(device)
 
-            recon_params = model(in_img)
+            recon_params = base_model(in_img)
+            recon_img = face_loss.reconst_img(recon_params)
+            shape_map, color_map = uv_model(torch.cat([in_img, recon_img], dim=1))
             # import pdb; pdb.set_trace()
-            all_loss,img_loss,lmk_loss,recog_loss,recon_img=face_loss(recon_params, gt_img, lmk)
+            all_loss,img_loss,lmk_loss,recog_loss,recon_img=face_loss(recon_params, shape_map, color_map, gt_img, lmk)
             all_loss_list.append(all_loss.item())
             img_loss_list.append(img_loss.item())
             lmk_loss_list.append(lmk_loss.item())
             recog_loss_list.append(recog_loss.item())
             if i == VIS_BATCH_IDX:
-                visualize_image = visualize_batch(gt_img, recon_img)
+                visualize_image = []
+                visualize_image.append(visualize_batch(gt_img, recon_img))
+                visualize_image.append(visualize_batch(gt_img, shape_map))
+                visualize_image.append(visualize_batch(gt_img, color_map))
+
 
     print ("-"*50, " Test Results ", "-"*50)
     _all_loss = np.mean(all_loss_list)
@@ -179,12 +202,17 @@ def eval(model, epoch):
     print ("-"*116)
     return _all_loss, _img_loss, _lmk_loss, _recog_loss, visualize_image
 
-for epoch in range(5,NUM_EPOCH):
-    model = train(model, epoch)
-    all_loss, img_loss, lmk_loss, recog_loss, visualize_image = eval(model, epoch)
+for epoch in range(3, NUM_EPOCH):
+    uv_model = train(base_model, uv_model, epoch)
+    all_loss, img_loss, lmk_loss, recog_loss, visualize_image = eval(base_model, uv_model, epoch)
     lr_schduler.step(all_loss)
-    io.imsave("./result_full/Epoch:{:02}_AllLoss:{:.6f}_ImgLoss:{:.6f}_LMKLoss:{:.6f}_RecogLoss:{:.6f}.png".format(epoch, all_loss, img_loss, lmk_loss, recog_loss), visualize_image)
-    model2save = {'model': model.state_dict(),
+    if isinstance(visualize_image, list):
+        name = ["image", "shape_map", "texture_map"]
+        for img, n in zip(visualize_image, name):
+            io.imsave("./result_uv/{}_Epoch:{:02}_AllLoss:{:.6f}_ImgLoss:{:.6f}_LMKLoss:{:.6f}_RecogLoss:{:.6f}.png".format(n, epoch, all_loss, img_loss, lmk_loss, recog_loss), img)
+    else:    
+        io.imsave("./result_uv_residual/Epoch:{:02}_AllLoss:{:.6f}_ImgLoss:{:.6f}_LMKLoss:{:.6f}_RecogLoss:{:.6f}.png".format(epoch, all_loss, img_loss, lmk_loss, recog_loss), visualize_image)
+    model2save = {'model': uv_model.state_dict(),
                   'optimizer': optimizer.state_dict()}
-    torch.save(model2save, "./model_result_full/epoch_{:02}_loss_{:.4f}_Img_loss_{:.4f}_LMK_loss{:.4f}_Recog_loss{:.4f}.pth".format(epoch+1, img_loss+LMK_LOSS_WEIGHT*lmk_loss, img_loss, lmk_loss, recog_loss))
+    torch.save(model2save, "./model_result_uv_residual/epoch_{:02}_loss_{:.4f}_Img_loss_{:.4f}_LMK_loss{:.4f}_Recog_loss{:.4f}.pth".format(epoch+1, img_loss+LMK_LOSS_WEIGHT*lmk_loss, img_loss, lmk_loss, recog_loss))
 
