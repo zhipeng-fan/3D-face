@@ -191,7 +191,7 @@ class BFMFaceLoss(nn.Module):
         vertex_color = light_color*albedo
         return vertex_color
 
-    def reconst_img(self, params):
+    def reconst_img(self, params, return_type=None):
         bs = params.shape[0]
         id_coef, ex_coef, tex_coef, angles, gamma, tranlation, scale = self.split(params)
 
@@ -219,7 +219,10 @@ class BFMFaceLoss(nn.Module):
                                               face_triangles,
                                               face_albedo,
                                               texture_type="vertex")
-        return recon_img
+        if return_type == 'all':
+            return recon_img, face_shape, face_triangles, face_albedo
+        else:
+            return recon_img
 
     def forward(self, params, gt_img, gt_lmk):
         bs = params.shape[0]
@@ -312,7 +315,8 @@ class BFMFaceLossUVMap(BFMFaceLoss):
         face_albedo = face_albedo+albedo_offset
 
         # laplacian loss and flatten loss for the smoothness of the mesh structure
-        laplacian_loss = self.laplacian_loss(face_shape).mean()
+        laplacian_loss_shape = self.laplacian_loss(face_shape).mean()
+        laplacian_loss_albedo = self.laplacian_loss(face_albedo).mean()
         # flatten_loss = self.flatten_loss(face_shape).mean()
 
         # face model scaling, rotation and translation
@@ -361,10 +365,10 @@ class BFMFaceLossUVMap(BFMFaceLoss):
 
         # print (shape_offset_l2, albedo_offset_l2, shape_offset_sym, albedo_offset_sym)
 
-        all_loss = 20*img_loss + self.lmk_loss_w*lmk_loss + self.recog_loss_w*recog_loss +\
-                    self.small_offset_weight*(shape_offset_l2+albedo_offset_l2) +\
-                    self.sym_weight*(shape_offset_sym+albedo_offset_sym) +\
-                    0.08 * laplacian_loss 
+        all_loss = img_loss + self.lmk_loss_w*lmk_loss + self.recog_loss_w*recog_loss +\
+                   self.small_offset_weight*(shape_offset_l2+albedo_offset_l2) +\
+                   self.sym_weight*(shape_offset_sym+albedo_offset_sym) +\
+                   0.08*laplacian_loss_shape+0.1*laplacian_loss_albedo
                     # 0.0003 * flatten_loss
 
         return all_loss, img_loss, lmk_loss, recog_loss, recon_img 

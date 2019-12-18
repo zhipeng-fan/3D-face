@@ -15,7 +15,7 @@ from model import BaseModel
 
 import h5py
 
-BATCH_SIZE = 128
+BATCH_SIZE = 64
 MODEL_LOAD_PATH="./model_result_full/epoch_19_loss_0.5796_Img_loss_0.0098_LMK_loss0.5698_Recog_loss0.0023.pth"
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
@@ -80,11 +80,12 @@ def prepare_dataset(name, dataloader, size):
                 recon_img = face_loss.reconst_img(recon_params)
                 recon_img = recon_img.permute(0,2,3,1).cpu().numpy()*255.
                 recon_params =recon_params.cpu().numpy()
-                for _ in range(recon_params.shape[0]):
-                    params_dset[idx] = recon_params[idx]
-                    image_dset[idx] = recon_img[idx]
+                for i in range(recon_params.shape[0]):
+                    params_dset[idx] = recon_params[i]
+                    image_dset[idx] = recon_img[i]
+                    idx += 1
 
 print ("Prepare validation set:")
 prepare_dataset("val", val_dataloader, len(val_set))
 print ("Prepare train set:")
-prepare_dataset("train", train_transform, len(train_set))
+prepare_dataset("train", train_dataloader, len(train_set))

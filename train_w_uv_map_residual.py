@@ -63,8 +63,8 @@ inv_normalize = transforms.Compose([
                     
 
 # -------------------------- Dataset loading -----------------------------
-train_set = CACDDataset("./data/CACD2000_train.hdf5", train_transform, inv_normalize)
-val_set = CACDDataset("./data/CACD2000_val.hdf5", val_transform, inv_normalize)
+train_set = CACDDataset("./data/CACD2000_train.hdf5", train_transform, inv_normalize, "./data/CACD2000_train_bfm_recon.hdf5")
+val_set = CACDDataset("./data/CACD2000_val.hdf5", val_transform, inv_normalize, "./data/CACD2000_val_bfm_recon.hdf5")
 
 train_dataloader = DataLoader(train_set, batch_size=BATCH_SIZE, num_workers=4, shuffle=True)
 val_dataloader = DataLoader(val_set, batch_size=BATCH_SIZE, num_workers=4, shuffle=False)
@@ -80,7 +80,7 @@ for param in base_model.parameters():
     param.requires_grad=False
 base_model.eval()
 
-uv_model = DoubleHeadUNet(7,3,32)
+uv_model = DoubleHeadUNet(6,3,32)
 uv_model.to(device)
 if UV_MODEL_LOAD_PATH is not None:
     uv_model.load_state_dict(torch.load(UV_MODEL_LOAD_PATH)['model'])
@@ -132,12 +132,11 @@ def train(base_model, uv_model, epoch):
     running_recog_loss = []
     loop = tqdm(enumerate(train_dataloader), total=len(train_dataloader))
     for i, data in loop:
-        in_img, gt_img, lmk = data
+        in_img, gt_img, lmk, recon_img, recon_params = data
         in_img = in_img.to(device); lmk = lmk.to(device)
-        gt_img = gt_img.to(device)
+        gt_img = gt_img.to(device); recon_img = recon_img.to(device)
+        recon_params = recon_params.to(device)
         optimizer.zero_grad()
-        recon_params = base_model(in_img)
-        recon_img = face_loss.reconst_img(recon_params)
         shape_map, color_map = uv_model(torch.cat([in_img, recon_img], dim=1))
         loss,img_loss,lmk_loss,recog_loss,_ = face_loss(recon_params, shape_map, color_map, gt_img, lmk)
         loss.backward()
@@ -173,12 +172,13 @@ def eval(base_model, uv_model, epoch):
     recog_loss_list = []
     with torch.no_grad():
         for i, data in tqdm(enumerate(val_dataloader), total=len(val_dataloader)):
-            in_img, gt_img, lmk = data
+            in_img, gt_img, lmk, recon_img, recon_params = data
             in_img = in_img.to(device); lmk = lmk.to(device)
-            gt_img = gt_img.to(device)
+            gt_img = gt_img.to(device); recon_img = recon_img.to(device)
+            recon_params = recon_params.to(device   )
 
-            recon_params = base_model(in_img)
-            recon_img = face_loss.reconst_img(recon_params)
+            # recon_params = base_model(in_img)
+            # recon_img = face_loss.reconst_img(recon_params)
             shape_map, color_map = uv_model(torch.cat([in_img, recon_img], dim=1))
             # import pdb; pdb.set_trace()
             all_loss,img_loss,lmk_loss,recog_loss,recon_img=face_loss(recon_params, shape_map, color_map, gt_img, lmk)
@@ -202,14 +202,14 @@ def eval(base_model, uv_model, epoch):
     print ("-"*116)
     return _all_loss, _img_loss, _lmk_loss, _recog_loss, visualize_image
 
-for epoch in range(3, NUM_EPOCH):
+for epoch in range(NUM_EPOCH):
     uv_model = train(base_model, uv_model, epoch)
     all_loss, img_loss, lmk_loss, recog_loss, visualize_image = eval(base_model, uv_model, epoch)
     lr_schduler.step(all_loss)
     if isinstance(visualize_image, list):
         name = ["image", "shape_map", "texture_map"]
         for img, n in zip(visualize_image, name):
-            io.imsave("./result_uv/{}_Epoch:{:02}_AllLoss:{:.6f}_ImgLoss:{:.6f}_LMKLoss:{:.6f}_RecogLoss:{:.6f}.png".format(n, epoch, all_loss, img_loss, lmk_loss, recog_loss), img)
+            io.imsave("./result_uv_residual/{}_Epoch:{:02}_AllLoss:{:.6f}_ImgLoss:{:.6f}_LMKLoss:{:.6f}_RecogLoss:{:.6f}.png".format(n, epoch, all_loss, img_loss, lmk_loss, recog_loss), img)
     else:    
         io.imsave("./result_uv_residual/Epoch:{:02}_AllLoss:{:.6f}_ImgLoss:{:.6f}_LMKLoss:{:.6f}_RecogLoss:{:.6f}.png".format(epoch, all_loss, img_loss, lmk_loss, recog_loss), visualize_image)
     model2save = {'model': uv_model.state_dict(),

@@ -28,7 +28,7 @@ RECOG_LOSS_WEIGHT=20
 SMALL_OFFSET_W=1e-4
 SYM_OFFSET_W=1e-4
 MODEL_LOAD_PATH="./model_result_full/epoch_15_loss_0.6110_Img_loss_0.0099_LMK_loss0.6010_Recog_loss0.0023.pth"
-UV_MODEL_LOAD_PATH = "./model_result_uv/epoch_02_loss_0.5661_Img_loss_0.0100_LMK_loss0.5561_Recog_loss0.0023.pth"
+UV_MODEL_LOAD_PATH = "./model_result_uv/epoch_05_loss_0.5620_Img_loss_0.0099_LMK_loss0.5521_Recog_loss0.0017.pth"
 SEED=0
 
 # -------------------------- Reproducibility ------------------------------
@@ -199,7 +199,7 @@ def eval(base_model, uv_model, epoch):
     print ("-"*116)
     return _all_loss, _img_loss, _lmk_loss, _recog_loss, visualize_image
 
-for epoch in range(3, NUM_EPOCH):
+for epoch in range(5, NUM_EPOCH):
     uv_model = train(base_model, uv_model, epoch)
     all_loss, img_loss, lmk_loss, recog_loss, visualize_image = eval(base_model, uv_model, epoch)
     lr_schduler.step(all_loss)

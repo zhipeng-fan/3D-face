@@ -188,7 +188,7 @@ renderer.transform.set_eyes_from_angles(camera_distance, elevation, azimuth)
 # face_id = face_id[None,:,:].expand(bs,-1,-1)
 
 # mesh = trimesh.Trimesh(vertices=shape[0].numpy(), 
-#                        faces=torch.flip(face_model.tri.reshape(-1,3)-1, dims=[1]),
+#                        faces=1,
 #                        vertex_colors=np.clip(albedo[0].numpy(),0,1))
 # mesh.show()
 
@@ -303,6 +303,7 @@ renderer.transform.set_eyes_from_angles(camera_distance, elevation, azimuth)
 # plt.scatter(lmk[:20,0]/250.*224., lmk[:20,1]/250.*224.)
 # plt.show()
 
+"""
 from skimage import io
 import scipy.io as sio
 import numpy as np
@@ -336,3 +337,45 @@ mesh = trimesh.Trimesh(vertices=bfm_face_model.meanshape.reshape(-1,3),
                        vertex_colors=offset[0])
 
 mesh.show()
+"""
+import torch
+from torchvision import transforms
+from torch.utils.data import DataLoader
+from dataset import CACDDataset
+
+import matplotlib.pyplot as plt
+
+train_transform = transforms.Compose([
+                    transforms.ToPILImage(),
+                    transforms.Resize(224),
+                    # transforms.RandomHorizontalFlip(),
+                    transforms.ToTensor(),
+                    transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+                ])
+
+val_transform = transforms.Compose([
+                    transforms.ToPILImage(),
+                    transforms.Resize(224),
+                    transforms.ToTensor(),
+                    transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+    ])
+
+inv_normalize = transforms.Compose([
+                    transforms.Normalize(
+                                mean=[-0.485/0.229, -0.456/0.224, -0.406/0.255],
+                                std=[1/0.229, 1/0.224, 1/0.255])
+    ])
+                    
+
+# -------------------------- Dataset loading -----------------------------
+val_set = CACDDataset("./data/CACD2000_val.hdf5", val_transform, inv_normalize, "./data/CACD2000_val_bfm_recon.hdf5")
+val_dataloader = DataLoader(val_set, batch_size=1, num_workers=1, shuffle=False)
+
+
+for in_img, gt_img, lm, recon_img, recon_params in val_dataloader:
+    fig = plt.figure(figsize=(300, 300))
+    fig.add_subplot(1,2,1)
+    plt.imshow(recon_img[0].permute(1,2,0))
+    fig.add_subplot(1,2,2)
+    plt.imshow(gt_img[0].permute(1,2,0))
+    plt.show()
